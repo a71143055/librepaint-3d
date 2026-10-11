@@ -34,7 +34,7 @@ List<SidebarPage> sidebarPages = [
 
 SidebarPage sidebarPage = sidebarPages[0];
 
-final sidebarX = lWidth - SIDEBAR_WIDTH;
+double get sidebarX => lWidth - SIDEBAR_WIDTH;
 final sidebarY = 48;
 
 void setSidebarPage(int pageIdx) {
@@ -110,7 +110,7 @@ class BrushesPage extends SidebarPage {
             "5", "px"
         );
 
-        opacitySlider = new Slider(lHeight - SIDEBAR_WIDTH + 24, 328+80, 1, 100, 100);
+        opacitySlider = new Slider(lWidth - SIDEBAR_WIDTH + 24, 328+80, 1, 100, 100);
         opacityNumberBox = new TextBox(
             lWidth - SIDEBAR_WIDTH + 154, 277+80, 85, 32,
             "100", "%"
