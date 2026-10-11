@@ -11,6 +11,15 @@ const DEFAULT_DOC_HEIGHT = 400;
 // file extensions LibrePaint 3D can save to
 const SAVE_EXTENSIONS = ["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "tga"];
 
+const MAX_UNDO_STEPS = 50;
+const MAX_HISTORY_BYTES = 512 * 1024 * 1024;
+
+class _Snapshot {
+    final ImageData pixels;
+    final int version;
+    _Snapshot(this.pixels, this.version);
+}
+
 // the image being painted, kept off screen so it isn't limited by the window
 class PaintDocument {
     late Canvas canvas;
@@ -18,8 +27,19 @@ class PaintDocument {
 
     // where the image was opened from or last saved to
     String? filePath;
+
+    // each change gets a new version so undoing back to the saved version
+    // counts as unmodified
+    int _version = 0;
+    int _nextVersion = 1;
+    int _savedVersion = 0;
+    final List<_Snapshot> _undoStack = [];
+    final List<_Snapshot> _redoStack = [];
+
     // true when there are changes since the last save
-    bool modified = false;
+    bool get modified => _version != _savedVersion;
+    bool get canUndo => _undoStack.isNotEmpty;
+    bool get canRedo => _redoStack.isNotEmpty;
 
     int get width => canvas.width;
     int get height => canvas.height;
@@ -70,6 +90,39 @@ class PaintDocument {
         return doc;
     }
 
+    // call before changing the pixels so the change can be undone
+    void beginChange() {
+        _undoStack.add(_Snapshot(getPixels(), _version));
+        _redoStack.clear();
+        _version = _nextVersion++;
+        _trimHistory();
+    }
+
+    void undo() {
+        if (!canUndo) return;
+        _redoStack.add(_Snapshot(getPixels(), _version));
+        _restore(_undoStack.removeLast());
+    }
+
+    void redo() {
+        if (!canRedo) return;
+        _undoStack.add(_Snapshot(getPixels(), _version));
+        _restore(_redoStack.removeLast());
+    }
+
+    void _restore(_Snapshot snap) {
+        ctx.putImageData(snap.pixels, 0, 0);
+        _version = snap.version;
+    }
+
+    // drop the oldest undo steps once the history uses too much memory
+    void _trimHistory() {
+        int bytes() => [..._undoStack, ..._redoStack].fold(0, (sum, snap) => sum + snap.pixels.data.length);
+        while (_undoStack.length > 1 && (_undoStack.length > MAX_UNDO_STEPS || bytes() > MAX_HISTORY_BYTES)) {
+            _undoStack.removeAt(0);
+        }
+    }
+
     ImageData getPixels() {
         return ctx.getImageData(0, 0, width, height);
     }
@@ -102,7 +155,7 @@ class PaintDocument {
         }
 
         filePath = path;
-        modified = false;
+        _savedVersion = _version;
         return null;
     }
 }

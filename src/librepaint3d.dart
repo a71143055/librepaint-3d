@@ -112,23 +112,26 @@ void renderTopRowButtons() {
         Icon.redo
     ];
     for (var i = 0; i < labels2.length; i++) {
-        var rx = lWidth - 48 - 68*(i+1);
+        var rx = topRightButtonX(i);
+        // gray out undo/redo when there's nothing to undo/redo
+        final enabled = (i != UNDO_BUTTON || doc.canUndo) && (i != REDO_BUTTON || doc.canRedo);
         noStroke();
         rectMode(CORNER);
         var touching2 = point_rect(mouseX / appScale, mouseY / appScale, rx, 0, 68, 48);
-        if (touching2) {
+        if (touching2 && enabled) {
             fill(255, 255, 255, 25);
         } else {
             noFill();
         }
         rect(rx, 0, 68, 48);
         
-        fill(255, 255, 255);
+        final textClr = enabled ? 255 : 110;
+        fill(textClr);
         text(labels2[3-i], rx + 68/2, 40);
 
         strokeWeight(2);
         rectMode(CENTER);
-        renderIcon(labels2Icons[3-i], rx + 34, 16, 0.5, 0, 255);
+        renderIcon(labels2Icons[3-i], rx + 34, 16, 0.5, 0, textClr);
         rectMode(CORNER);
     }
 
@@ -332,7 +335,7 @@ void mousePressed(MouseEvent event) {
         return;
     }
     
-    if (mouseX > sidebarX) {
+    if (mouseX / appScale > sidebarX && mouseY / appScale > sidebarY) {
         sidebarPage.mousePressed();
         return;
     }
@@ -351,6 +354,15 @@ void mousePressed(MouseEvent event) {
         btnX += 68;
     }
 
+    if (point_rect(mouseX / appScale, mouseY / appScale, topRightButtonX(UNDO_BUTTON), 0, 68, 48)) {
+        undo();
+        return;
+    }
+    if (point_rect(mouseX / appScale, mouseY / appScale, topRightButtonX(REDO_BUTTON), 0, 68, 48)) {
+        redo();
+        return;
+    }
+
     if (isOverCanvasArea(mouseX, mouseY)) {
         currDrawStroke = new BrushStroke(currColor, brushesPage.thicknessSlider.value, brushesPage.opacitySlider.value, selectedMarker);
         currDrawStroke!.addPoint(toDocX(mouseX), toDocY(mouseY));
@@ -366,7 +378,7 @@ void mouseDragged(MouseEvent event) {
         return;
     }
 
-    if (mouseX > sidebarX) {
+    if (mouseX / appScale > sidebarX && mouseY / appScale > sidebarY) {
         sidebarPage.mouseDragged();
         return;
     }
@@ -399,15 +411,32 @@ void mouseReleased(MouseEvent event) {
     }
 
     if (currDrawStroke != null) {
+        doc.beginChange();
         currDrawStroke!.render(doc.ctx);
         currDrawStroke = null;
-        doc.modified = true;
         updateTitle();
     }
 
     brushesPage.thicknessSlider.setPressed(false);
     brushesPage.opacitySlider.setPressed(false);
 }
+
+void undo() {
+    if (currDrawStroke != null) return;
+    doc.undo();
+    updateTitle();
+}
+
+void redo() {
+    if (currDrawStroke != null) return;
+    doc.redo();
+    updateTitle();
+}
+
+// x of a top right button, counting from the right starting at 0
+double topRightButtonX(int i) => lWidth - 48 - 68 * (i + 1);
+const REDO_BUTTON = 0;
+const UNDO_BUTTON = 2;
 
 // returns true if the key was a shortcut
 bool handleShortcut(KeyboardEvent event) {
@@ -425,6 +454,10 @@ bool handleShortcut(KeyboardEvent event) {
         saveDocument();
     } else if (key == 113) { // q
         quit();
+    } else if ((key == 122 && shift) || key == 121) { // ctrl+shift+z, ctrl+y
+        redo();
+    } else if (key == 122) { // z
+        undo();
     } else {
         return false;
     }
