@@ -35,10 +35,18 @@ Build:
 jvbuild build
 ```
 
-Package:
+Package (.deb):
 ```
-jvbuild package
+./package-deb.sh
 ```
+This runs `jvbuild package` and then removes the `build-essential` dependency, bundles the Open Sans font, and makes the installed files owned by root.
+
+Install the package:
+```
+sudo apt install ./jvbuild-out/librepaint3d_<version>_x64.deb
+```
+
+If the first `jvbuild build` after `jvbuild install` fails with `No pubspec.yaml found for package drawlite_dart`, run it again; jvbuild resolves Dart packages before it has finished generating drawlite's pubspec.yaml.
 
 
 ## Platform Support
