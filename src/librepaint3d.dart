@@ -363,7 +363,16 @@ void mousePressed(MouseEvent event) {
         return;
     }
 
-    if (isOverCanvasArea(mouseX, mouseY)) {
+    if (isOverCanvasArea(mouseX, mouseY) && selectedMarker == FILL_BUCKET) {
+        final x = toDocX(mouseX).floor(), y = toDocY(mouseY).floor();
+        if (x >= 0 && y >= 0 && x < doc.width && y < doc.height) {
+            doc.beginChange();
+            final pixels = doc.getPixels();
+            floodFill(pixels, x, y, currColor, brushesPage.opacitySlider.value);
+            doc.ctx.putImageData(pixels, 0, 0);
+            updateTitle();
+        }
+    } else if (isOverCanvasArea(mouseX, mouseY)) {
         currDrawStroke = new BrushStroke(currColor, brushesPage.thicknessSlider.value, brushesPage.opacitySlider.value, selectedMarker);
         currDrawStroke!.addPoint(toDocX(mouseX), toDocY(mouseY));
     }
