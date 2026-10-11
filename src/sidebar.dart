@@ -28,8 +28,10 @@ String sidebarTopLabel = "Marker";
 
 BrushesPage brushesPage = new BrushesPage();
 
+// pages that aren't implemented yet get a placeholder so selecting them doesn't crash
 List<SidebarPage> sidebarPages = [
-    brushesPage
+    brushesPage,
+    for (var i = 1; i < sidebarPageLabels.length; i++) new PlaceholderPage()
 ];
 
 SidebarPage sidebarPage = sidebarPages[0];
@@ -80,6 +82,19 @@ class SidebarPage {
     void mouseDragged() {}
     void keyPressed(KeyboardEvent event) {}
     void render(int mouseX, int mouseY) {}
+}
+
+class PlaceholderPage extends SidebarPage {
+    void init() {
+        initialized = true;
+    }
+
+    void render(int mouseX, int mouseY) {
+        font("Open Sans", 14);
+        fill(100);
+        textAlign(BASELINE);
+        text("Coming soon", sidebarX + 25, sidebarY + 70);
+    }
 }
 
 class BrushesPage extends SidebarPage {
