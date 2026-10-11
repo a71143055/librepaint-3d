@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:drawlite_dart/drawlite.dart'
-    show Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent;
+    show Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent, KeyState;
 import 'package:drawlite_dart/dl.dart';
 import 'package:drawlite_dart/drawlite-touch.dart';
 
@@ -10,6 +10,9 @@ import 'package:dcanvas/backend/Window.dart';
 import 'package:dcanvas/backend/Backend.dart' show sdl;
 
 import './icons.dart';
+import './document.dart';
+import './file-actions.dart';
+import './menu.dart';
 
 import './welcome-menu.dart';
 import './brushes.dart';
@@ -148,6 +151,40 @@ var lastRedraw = 0;
 // how often to redraw when idle, e.g. for blinking text cursors
 const IDLE_REDRAW_MS = 250;
 
+// padding between the canvas and the edges of the canvas area
+const CANVAS_PADDING = 24;
+
+// where the document is shown on screen, in logical coordinates
+double viewX = 0;
+double viewY = 0;
+double viewZoom = 1;
+
+void updateView() {
+    final areaW = sidebarX - CANVAS_PADDING * 2;
+    final areaH = lHeight - canvasAreaY - CANVAS_PADDING * 2;
+    // shrink large images to fit, but never enlarge small ones
+    viewZoom = [1.0, areaW / doc.width, areaH / doc.height].reduce((a, b) => a < b ? a : b);
+    if (viewZoom <= 0) viewZoom = 1;
+    viewX = ((sidebarX - doc.width * viewZoom) / 2).roundToDouble();
+    viewY = (canvasAreaY + (lHeight - canvasAreaY - doc.height * viewZoom) / 2).roundToDouble();
+}
+
+double toDocX(num screenX) => (screenX / appScale - viewX) / viewZoom;
+double toDocY(num screenY) => (screenY / appScale - viewY) / viewZoom;
+
+bool isOverCanvasArea(num screenX, num screenY) {
+    return screenX / appScale < sidebarX && screenY / appScale > canvasAreaY;
+}
+
+var _lastTitle = "";
+void updateTitle() {
+    final title = "${doc.modified ? "*" : ""}${doc.displayName} - LibrePaint 3D";
+    if (title != _lastTitle) {
+        window.setTitle(title);
+        _lastTitle = title;
+    }
+}
+
 void draw() {
     // check for events
     window.pollInput();
@@ -178,11 +215,24 @@ void draw() {
         rect(0, canvasAreaY, lWidth - SIDEBAR_WIDTH, lHeight - canvasAreaY);
 
         // canvas
-        final canvasX = (sidebarX / 2 - paintCanvas.width / 2).round();
-        final canvasY = (canvasAreaY + (height - canvasAreaY) / 2 - paintCanvas.height / 2).round();
-        image(paintCanvas, canvasX, canvasY);
+        updateView();
+        final viewW = doc.width * viewZoom;
+        final viewH = doc.height * viewZoom;
+        image(doc.canvas, viewX, viewY, viewW, viewH);
         if (currDrawStroke != null) {
+            dl.ctx.save();
+            dl.ctx.translate(viewX, viewY);
+            dl.ctx.scale(viewZoom, viewZoom);
             currDrawStroke!.render(dl.ctx);
+            dl.ctx.restore();
+
+            // cover the parts of the stroke outside the canvas
+            noStroke();
+            fill(190, 190, 190);
+            rect(0, canvasAreaY, viewX, lHeight - canvasAreaY);
+            rect(viewX + viewW, canvasAreaY, sidebarX - viewX - viewW, lHeight - canvasAreaY);
+            rect(viewX, canvasAreaY, viewW, viewY - canvasAreaY);
+            rect(viewX, viewY + viewH, viewW, lHeight - viewY - viewH);
         }
 
         fill(255, 0, 0, 100);
@@ -254,6 +304,8 @@ void draw() {
             image(sidebarCacheImg!, sidebarX, sidebarY);
         }
 
+        renderMenu();
+
         // welcome
         if (scene == Scene.Welcome) {
             welcomeMenu();
@@ -273,6 +325,10 @@ void mousePressed(MouseEvent event) {
 
     if (colorPicker != null && colorPicker!.isMouseOver()) {
         colorPicker!.mousePressed();
+        return;
+    }
+
+    if (menuMousePressed()) {
         return;
     }
     
@@ -295,9 +351,9 @@ void mousePressed(MouseEvent event) {
         btnX += 68;
     }
 
-    if (get.mouseX < sidebarX && get.mouseY > canvasAreaY) {
+    if (isOverCanvasArea(mouseX, mouseY)) {
         currDrawStroke = new BrushStroke(currColor, brushesPage.thicknessSlider.value, brushesPage.opacitySlider.value, selectedMarker);
-        currDrawStroke!.addPoint(get.mouseX.toDouble(), get.mouseY.toDouble());
+        currDrawStroke!.addPoint(toDocX(mouseX), toDocY(mouseY));
     }
 }
 
@@ -316,7 +372,7 @@ void mouseDragged(MouseEvent event) {
     }
 
     if (currDrawStroke != null) {
-        currDrawStroke!.addPoint(get.mouseX.toDouble(), get.mouseY.toDouble());
+        currDrawStroke!.addPoint(toDocX(mouseX), toDocY(mouseY));
     }
 }
 
@@ -343,24 +399,43 @@ void mouseReleased(MouseEvent event) {
     }
 
     if (currDrawStroke != null) {
-        // redraw only the canvas and the stroke before snipping so that
-        // UI drawn on top of the canvas (e.g. the color picker) isn't captured
-        final canvasX = (sidebarX / 2 - paintCanvas.width / 2).round();
-        final canvasY = (canvasAreaY + (height - canvasAreaY) / 2 - paintCanvas.height / 2).round();
-        pushMatrix();
-            scale(appScale);
-            image(paintCanvas, canvasX, canvasY);
-            currDrawStroke!.render(dl.ctx);
-        popMatrix();
-        paintCanvas = snip(canvasX, canvasY, paintCanvas.width, paintCanvas.height);
+        currDrawStroke!.render(doc.ctx);
         currDrawStroke = null;
+        doc.modified = true;
+        updateTitle();
     }
 
     brushesPage.thicknessSlider.setPressed(false);
     brushesPage.opacitySlider.setPressed(false);
 }
 
+// returns true if the key was a shortcut
+bool handleShortcut(KeyboardEvent event) {
+    if (!KeyState.isCtrlPressed()) return false;
+
+    final key = event.keyCode;
+    final shift = KeyState.isShiftPressed();
+    if (key == 110) { // n
+        newDocument();
+    } else if (key == 111) { // o
+        openDocument();
+    } else if (key == 115 && shift) { // s
+        saveDocumentAs();
+    } else if (key == 115) {
+        saveDocument();
+    } else if (key == 113) { // q
+        quit();
+    } else {
+        return false;
+    }
+    menuOpen = false;
+    return true;
+}
+
 void keyPressed(KeyboardEvent event) {
+    if (handleShortcut(event)) {
+        return;
+    }
     if (colorPicker != null) {
         colorPicker!.keyPressed(event);
         return;
@@ -388,20 +463,22 @@ void myEventHandler(Event event) {
             dl.eventCallbacks.keyup(event);
         }
         
-        // Escape cancels the color picker instead of quitting the app
+        // Escape cancels the color picker and menu instead of quitting the app
         if (event.keyCode == Key.Escape && event.type == EventType.KeyDown) {
             colorPicker = null;
+            menuOpen = false;
         }
     } else if (event is WindowEvent) {
         if (event.type == EventType.WindowResized) {
             onWindowResized(event.width, event.height);
         }
     } else if (event is QuitEvent) {
-        running = false;
+        // ask about unsaved changes before closing
+        quit();
     }
 }
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
     width = (1241 * appScale).round();
     height = (804 * appScale).round();
     // width = (1023 * appScale).round();
@@ -428,8 +505,20 @@ Future<void> main() async {
     
     initBrushColors();
 
-    background(255);
-    paintCanvas = snip(0, 0, 500, 400);
+    doc = PaintDocument.blank();
+    onDocumentChanged = () {
+        updateTitle();
+        needsRedraw = true;
+    };
+    onQuit = () {
+        running = false;
+    };
+    updateTitle();
+    if (args.isNotEmpty) {
+        // the .desktop file passes files as URIs
+        final arg = args.first;
+        openDocumentPath(arg.startsWith("file://") ? Uri.parse(arg).toFilePath() : arg);
+    }
 
     lWidth = width / appScale;
     lHeight = height / appScale;
