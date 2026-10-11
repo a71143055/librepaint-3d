@@ -111,8 +111,41 @@ class PaintDocument {
     }
 
     void _restore(_Snapshot snap) {
+        // resizing and cropping change the size, so restore it too
+        if (snap.pixels.width != width || snap.pixels.height != height) {
+            _init(snap.pixels.width, snap.pixels.height);
+        }
         ctx.putImageData(snap.pixels, 0, 0);
         _version = snap.version;
+    }
+
+    // replaces the canvas with a new size, drawing the old one onto it
+    void _replaceCanvas(int newWidth, int newHeight, void Function(Canvas old) draw) {
+        final old = canvas;
+        _init(newWidth, newHeight);
+        draw(old);
+    }
+
+    // changes the canvas size; scaleImage stretches the picture to fit,
+    // otherwise it stays anchored to the top left and new space is white
+    void resize(int newWidth, int newHeight, bool scaleImage) {
+        if (newWidth == width && newHeight == height) return;
+        beginChange();
+        _replaceCanvas(newWidth, newHeight, (old) {
+            if (scaleImage) {
+                ctx.drawImage(old, 0, 0, newWidth, newHeight);
+            } else {
+                ctx.drawImage(old, 0, 0);
+            }
+        });
+    }
+
+    void crop(int x, int y, int cropWidth, int cropHeight) {
+        if (cropWidth <= 0 || cropHeight <= 0) return;
+        beginChange();
+        _replaceCanvas(cropWidth, cropHeight, (old) {
+            ctx.drawImage(old, -x, -y);
+        });
     }
 
     // drop the oldest undo steps once the history uses too much memory

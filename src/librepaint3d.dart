@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drawlite_dart/drawlite.dart'
-    show Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent, KeyState;
+    show Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent, KeyState, Color;
 import 'package:drawlite_dart/dl.dart';
 import 'package:drawlite_dart/drawlite-touch.dart';
 
@@ -14,6 +14,9 @@ import './icons.dart';
 import './document.dart';
 import './file-actions.dart';
 import './menu.dart';
+import './view.dart';
+import './tools.dart';
+import './pages.dart' show onCanvasChanged;
 
 import './welcome-menu.dart';
 import './brushes.dart';
@@ -155,31 +158,6 @@ var lastRedraw = 0;
 // how often to redraw when idle, e.g. for blinking text cursors
 const IDLE_REDRAW_MS = 250;
 
-// padding between the canvas and the edges of the canvas area
-const CANVAS_PADDING = 24;
-
-// where the document is shown on screen, in logical coordinates
-double viewX = 0;
-double viewY = 0;
-double viewZoom = 1;
-
-void updateView() {
-    final areaW = sidebarX - CANVAS_PADDING * 2;
-    final areaH = lHeight - canvasAreaY - CANVAS_PADDING * 2;
-    // shrink large images to fit, but never enlarge small ones
-    viewZoom = [1.0, areaW / doc.width, areaH / doc.height].reduce((a, b) => a < b ? a : b);
-    if (viewZoom <= 0) viewZoom = 1;
-    viewX = ((sidebarX - doc.width * viewZoom) / 2).roundToDouble();
-    viewY = (canvasAreaY + (lHeight - canvasAreaY - doc.height * viewZoom) / 2).roundToDouble();
-}
-
-double toDocX(num screenX) => (screenX - viewX) / viewZoom;
-double toDocY(num screenY) => (screenY - viewY) / viewZoom;
-
-bool isOverCanvasArea(num screenX, num screenY) {
-    return screenX < sidebarX && screenY > canvasAreaY;
-}
-
 var _lastTitle = "";
 void updateTitle() {
     final title = "${doc.modified ? "*" : ""}${doc.displayName} - LibrePaint 3D";
@@ -187,6 +165,114 @@ void updateTitle() {
         window.setTitle(title);
         _lastTitle = title;
     }
+}
+
+final _secondRowLabels = ["Select", "Crop", "Magic Select"];
+final _secondRowIcons = [Icon.select, Icon.crop, Icon.magicSelect];
+final _secondRowTools = [Tool.select, Tool.crop, null];
+
+// x and width of each button in the second toolbar row
+List<(double, double)> secondRowButtons() {
+    font("Open Sans", 12);
+    var x = 0.0;
+    final result = <(double, double)>[];
+    for (final label in _secondRowLabels) {
+        final w = textWidth(label) + 71;
+        result.add((x, w));
+        x += w;
+    }
+    return result;
+}
+
+// Done/Cancel buttons shown in the second row while cropping
+const _CROP_BTN_WIDTH = 90.0;
+double get _cropDoneX => sidebarX - _CROP_BTN_WIDTH * 2 - 24;
+double get _cropCancelX => sidebarX - _CROP_BTN_WIDTH - 16;
+
+void renderSecondRow(int mouseX, int mouseY) {
+    final buttons = secondRowButtons();
+    textAlign(CENTER);
+    rectMode(CORNER);
+    for (var i = 0; i < buttons.length; i++) {
+        final (btnX, txtWidth) = buttons[i];
+        final active = _secondRowTools[i] != null && _secondRowTools[i] == currentTool;
+        // renderIcon leaves rectMode set to CENTER
+        rectMode(CORNER);
+        noStroke();
+        if (active) {
+            fill(0, 0, 0, 35);
+        } else if (point_rect(mouseX, mouseY, btnX, 48, txtWidth, 48)) {
+            fill(0, 0, 0, 20);
+        } else {
+            noFill();
+        }
+        rect(btnX, 48, txtWidth, 48);
+
+        fill(0, 0, 0);
+        text(_secondRowLabels[i], btnX + txtWidth/2 + 12, 76);
+        renderIcon(_secondRowIcons[i], btnX + 23, 70, 0.65, 0, 0);
+    }
+
+    // hint for the current tool
+    final (lastX, lastW) = buttons.last;
+    var hint = "";
+    if (currentTool == Tool.crop) {
+        hint = "Drag to choose the area to keep";
+    } else if (currentTool == Tool.select) {
+        hint = "Drag to select. Ctrl+C copy, Ctrl+X cut, Ctrl+V paste, Delete erase";
+    }
+    noStroke();
+    fill(90);
+    font("Open Sans", 12);
+    textAlign(LEFT, CENTER);
+    text(hint, lastX + lastW + 16, 72);
+
+    rectMode(CORNER);
+    if (currentTool == Tool.crop) {
+        for (final (x, label, primary) in [(_cropDoneX, "Done", true), (_cropCancelX, "Cancel", false)]) {
+            final hover = point_rect(mouseX, mouseY, x, 56, _CROP_BTN_WIDTH, 32);
+            if (primary) {
+                fill(hover ? Color(0, 85, 160) : Color(0, 100, 180));
+            } else {
+                fill(hover ? 200 : 210);
+            }
+            rect(x, 56, _CROP_BTN_WIDTH, 32);
+            fill(primary ? 255 : 0);
+            textAlign(CENTER, CENTER);
+            text(label, x + _CROP_BTN_WIDTH / 2, 72);
+        }
+    }
+    textAlign(LEFT, BASELINE);
+    rectMode(CORNER);
+}
+
+// returns true if a second row button was clicked
+bool secondRowMousePressed(int mouseX, int mouseY) {
+    if (mouseY < 48 || mouseY > 96 || mouseX > sidebarX) return false;
+    if (currentTool == Tool.crop) {
+        if (point_rect(mouseX, mouseY, _cropDoneX, 56, _CROP_BTN_WIDTH, 32)) {
+            applyCrop();
+            updateTitle();
+            return true;
+        }
+        if (point_rect(mouseX, mouseY, _cropCancelX, 56, _CROP_BTN_WIDTH, 32)) {
+            cancelCrop();
+            return true;
+        }
+    }
+    final buttons = secondRowButtons();
+    for (var i = 0; i < buttons.length; i++) {
+        final (x, w) = buttons[i];
+        if (point_rect(mouseX, mouseY, x, 48, w, 48)) {
+            final tool = _secondRowTools[i];
+            if (tool != null) {
+                // clicking the active tool again goes back to painting
+                setTool(currentTool == tool ? Tool.brush : tool);
+            }
+            return true;
+        }
+    }
+    return true;
 }
 
 void draw() {
@@ -229,15 +315,18 @@ void draw() {
             dl.ctx.scale(viewZoom, viewZoom);
             currDrawStroke!.render(dl.ctx);
             dl.ctx.restore();
-
-            // cover the parts of the stroke outside the canvas
-            noStroke();
-            fill(190, 190, 190);
-            rect(0, canvasAreaY, viewX, lHeight - canvasAreaY);
-            rect(viewX + viewW, canvasAreaY, sidebarX - viewX - viewW, lHeight - canvasAreaY);
-            rect(viewX, canvasAreaY, viewW, viewY - canvasAreaY);
-            rect(viewX, viewY + viewH, viewW, lHeight - viewY - viewH);
         }
+        renderToolPreview();
+
+        // cover the parts of strokes and shapes outside the canvas
+        noStroke();
+        fill(190, 190, 190);
+        rect(0, canvasAreaY, viewX, lHeight - canvasAreaY);
+        rect(viewX + viewW, canvasAreaY, sidebarX - viewX - viewW, lHeight - canvasAreaY);
+        rect(viewX, canvasAreaY, viewW, viewY - canvasAreaY);
+        rect(viewX, viewY + viewH, viewW, lHeight - viewY - viewH);
+
+        renderToolOverlay();
 
         fill(255, 0, 0, 100);
         noStroke();
@@ -259,44 +348,7 @@ void draw() {
 
         renderTopRowButtons();
 
-        // 2nd row labels
-        {
-            font("Open Sans", 12);
-            
-            List<String> labels = [
-                "Select",
-                "Crop",
-                "Magic Select"
-            ];
-            List<Icon> labelsIcons = [
-                Icon.select,
-                Icon.crop,
-                Icon.magicSelect
-            ];
-            var btnX = 0.0;
-            textAlign(CENTER);
-            for (var i = 0; i < labels.length; i++) {
-                var txtWidth = textWidth(labels[i]) + 71;
-                
-                var touching3 = point_rect(mouseX, mouseY, btnX, 48, txtWidth, 48);
-                if (touching3) {
-                    fill(0, 0, 0, 20);
-                } else {
-                    noFill();
-                }
-                noStroke();
-                rectMode(CORNER);
-                rect(btnX, 48, txtWidth, 48);
-                
-                fill(0, 0, 0);
-                text(labels[i], btnX + txtWidth/2 + 12, 76);
-
-                renderIcon(labelsIcons[i], btnX + 23, 70, 0.65, 0, 0);
-                
-                btnX += txtWidth;
-            }
-            rectMode(CORNER);
-        }
+        renderSecondRow(mouseX, mouseY);
 
         if (mouseX >= sidebarX || sidebarPage.isActive) {
             renderSideBar();
@@ -343,8 +395,10 @@ void mousePressed(MouseEvent event) {
     }
 
     // clicking outside the sidebar finishes editing its number boxes
-    if (brushesPage.initialized) {
-        brushesPage.blurInputs();
+    sidebarPage.blurInputs();
+
+    if (secondRowMousePressed(mouseX, mouseY)) {
+        return;
     }
     
     var btnX = (68 + (lWidth - (4*68 + 48 + 8*68))) / 2;
@@ -362,6 +416,16 @@ void mousePressed(MouseEvent event) {
     }
     if (point_rect(mouseX, mouseY, topRightButtonX(REDO_BUTTON), 0, 68, 48)) {
         redo();
+        return;
+    }
+    if (point_rect(mouseX, mouseY, topRightButtonX(PASTE_BUTTON), 0, 68, 48)) {
+        paste();
+        updateTitle();
+        return;
+    }
+
+    if (isOverCanvasArea(mouseX, mouseY) && currentTool != Tool.brush) {
+        toolMousePressed(toDocX(mouseX), toDocY(mouseY));
         return;
     }
 
@@ -396,6 +460,8 @@ void mouseDragged(MouseEvent event) {
 
     if (currDrawStroke != null) {
         currDrawStroke!.addPoint(toDocX(mouseX), toDocY(mouseY));
+    } else if (currentTool != Tool.brush) {
+        toolMouseDragged(toDocX(mouseX), toDocY(mouseY));
     }
 }
 
@@ -428,18 +494,28 @@ void mouseReleased(MouseEvent event) {
         updateTitle();
     }
 
-    brushesPage.thicknessSlider.setPressed(false);
-    brushesPage.opacitySlider.setPressed(false);
+    if (currentTool != Tool.brush) {
+        toolMouseReleased();
+        updateTitle();
+    }
+
+    if (brushesPage.initialized) {
+        brushesPage.thicknessSlider.setPressed(false);
+        brushesPage.opacitySlider.setPressed(false);
+    }
+    sidebarPage.mouseReleased();
 }
 
 void undo() {
     if (currDrawStroke != null) return;
+    finishTool();
     doc.undo();
     updateTitle();
 }
 
 void redo() {
     if (currDrawStroke != null) return;
+    finishTool();
     doc.redo();
     updateTitle();
 }
@@ -448,6 +524,7 @@ void redo() {
 double topRightButtonX(int i) => lWidth - 48 - 68 * (i + 1);
 const REDO_BUTTON = 0;
 const UNDO_BUTTON = 2;
+const PASTE_BUTTON = 3;
 
 // returns true if the key was a shortcut
 bool handleShortcut(KeyboardEvent event) {
@@ -469,6 +546,16 @@ bool handleShortcut(KeyboardEvent event) {
         redo();
     } else if (key == 122) { // z
         undo();
+    } else if (key == 99) { // c
+        copySelection();
+    } else if (key == 120) { // x
+        cutSelection();
+        updateTitle();
+    } else if (key == 118) { // v
+        paste();
+        updateTitle();
+    } else if (key == 97) { // a
+        selectAll();
     } else {
         return false;
     }
@@ -482,6 +569,11 @@ void keyPressed(KeyboardEvent event) {
     }
     if (colorPicker != null) {
         colorPicker!.keyPressed(event);
+        return;
+    }
+    // text boxes in the sidebar get keys while they're being edited
+    if (!sidebarPage.isActive && toolKeyPressed(event)) {
+        updateTitle();
         return;
     }
     sidebarPage.keyPressed(event);
@@ -579,6 +671,12 @@ Future<void> main(List<String> args) async {
 
     doc = PaintDocument.blank();
     onDocumentChanged = () {
+        updateTitle();
+        needsRedraw = true;
+    };
+    onDocumentReplaced = resetToolState;
+    beforeFileAction = finishTool;
+    onCanvasChanged = () {
         updateTitle();
         needsRedraw = true;
     };

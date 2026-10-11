@@ -11,10 +11,15 @@ bool _busy = false;
 void Function() onDocumentChanged = () {};
 // called when the app should exit
 void Function() onQuit = () {};
+// called when a new document replaces the current one
+void Function() onDocumentReplaced = () {};
+// called before saving etc., to commit edits that are still in progress
+void Function() beforeFileAction = () {};
 
 Future<void> _guard(Future<void> Function() action) async {
     if (_busy) return;
     _busy = true;
+    beforeFileAction();
     try {
         await action();
     } finally {
@@ -26,6 +31,7 @@ Future<void> _guard(Future<void> Function() action) async {
 void _setDocument(PaintDocument newDoc) {
     doc = newDoc;
     currDrawStroke = null;
+    onDocumentReplaced();
     onDocumentChanged();
 }
 
