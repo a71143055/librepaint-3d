@@ -1,3 +1,6 @@
+import 'dart:math' show pi;
+
+import 'package:dcanvas/CanvasRenderingContext.dart' show Context2D, CSSColor;
 import 'package:drawlite_dart/drawlite.dart'
     show Color;
 
@@ -43,61 +46,76 @@ void initBrushColors() {
 class BrushStroke {
     late Color color;
     late double weight;
+    // 0-100
+    late double opacity;
     late int brushId;
     List<double> points = [];
-    
-    BrushStroke(this.color, this.weight, this.brushId);
+    // spray can dots are generated once per point so they don't flicker every frame
+    List<double> sprayDots = [];
 
-    void render() {
+    BrushStroke(this.color, this.weight, this.opacity, this.brushId);
+
+    void addPoint(double x, double y) {
+        points.add(x);
+        points.add(y);
+
+        if (brushId == 8) {
+            final r = weight / 2;
+            for (int i = 0; i < 10; i++) {
+                sprayDots.add(x + dl.random(-r, r));
+                sprayDots.add(y + dl.random(-r, r));
+            }
+        }
+    }
+
+    CSSColor cssColor() {
+        return CSSColor(color.r, color.g, color.b, color.a / 255 * opacity / 100);
+    }
+
+    void render(Context2D ctx) {
+        ctx.save();
         switch (this.brushId) {
             case 0:
-                Marker.render(this);
+                Marker.render(this, ctx);
             case 8:
-                SprayCan.render(this);
+                SprayCan.render(this, ctx);
         }
+        ctx.restore();
     }
 }
 
 class Marker {
-    static void render(BrushStroke strokeInfo) {
+    static void render(BrushStroke strokeInfo, Context2D ctx) {
         final path = strokeInfo.points;
-
-        dl.stroke(strokeInfo.color);
-        dl.strokeWeight(strokeInfo.weight);
+        if (path.isEmpty) return;
 
         if (path.length == 2) {
-            dl.point(path[0], path[1]);
+            ctx.fillStyle = strokeInfo.cssColor();
+            ctx.beginPath();
+            ctx.arc(path[0], path[1], strokeInfo.weight / 2, 0, 2 * pi);
+            ctx.fill();
         } else {
-            for (var i = 0; i < path.length - 2; i += 2) {
-                dl.line(path[i], path[i+1], path[i+2], path[i+3]);
+            // draw as a single path so overlapping segments don't darken translucent strokes
+            ctx.strokeStyle = strokeInfo.cssColor();
+            ctx.lineWidth = strokeInfo.weight;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(path[0], path[1]);
+            for (var i = 2; i < path.length; i += 2) {
+                ctx.lineTo(path[i], path[i+1]);
             }
+            ctx.stroke();
         }
     }
 }
 
 class SprayCan {
-    static void render(BrushStroke strokeInfo) {
-        final path = strokeInfo.points;
-
-        dl.stroke(strokeInfo.color);
-        dl.strokeWeight(1);
-
-        if (path.length == 2) {
-            for (int i = 0; i < 10; i++) {
-                dl.point(
-                    path[0] + dl.random(-strokeInfo.weight/2, strokeInfo.weight/2),
-                    path[1] + dl.random(-strokeInfo.weight/2, strokeInfo.weight/2)
-                );
-            }
-        } else {
-            for (var j = 0; j < path.length - 2; j += 2) {
-                for (int i = 0; i < 10; i++) {
-                    dl.point(
-                        path[j] + dl.random(-strokeInfo.weight/2, strokeInfo.weight/2),
-                        path[j+1] + dl.random(-strokeInfo.weight/2, strokeInfo.weight/2)
-                    );
-                }
-            }
+    static void render(BrushStroke strokeInfo, Context2D ctx) {
+        final dots = strokeInfo.sprayDots;
+        ctx.fillStyle = strokeInfo.cssColor();
+        for (var i = 0; i < dots.length; i += 2) {
+            ctx.fillRect(dots[i], dots[i+1], 1, 1);
         }
     }
 }

@@ -142,9 +142,29 @@ void renderTopRowButtons() {
     arrow(lWidth - 26, 24, 0.7, 0);
 }
 
+// set when something happened that may change what's on screen
+var needsRedraw = true;
+var lastRedraw = 0;
+// how often to redraw when idle, e.g. for blinking text cursors
+const IDLE_REDRAW_MS = 250;
+
 void draw() {
     // check for events
     window.pollInput();
+
+    if (!running) {
+        noLoop();
+        window.free();
+        return;
+    }
+
+    // skip rendering when nothing changed to save CPU
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!needsRedraw && now - lastRedraw < IDLE_REDRAW_MS) {
+        return;
+    }
+    needsRedraw = false;
+    lastRedraw = now;
 
     final mouseX = get.mouseX;
     final mouseY = get.mouseY;
@@ -162,7 +182,7 @@ void draw() {
         final canvasY = (canvasAreaY + (height - canvasAreaY) / 2 - paintCanvas.height / 2).round();
         image(paintCanvas, canvasX, canvasY);
         if (currDrawStroke != null) {
-            currDrawStroke!.render();
+            currDrawStroke!.render(dl.ctx);
         }
 
         fill(255, 0, 0, 100);
@@ -224,7 +244,7 @@ void draw() {
             rectMode(CORNER);
         }
 
-        if (mouseX >= sidebarX) {
+        if (mouseX >= sidebarX || sidebarPage.isActive) {
             renderSideBar();
             sidebarCacheImg = null;
         } else if (sidebarCacheImg == null) {
@@ -240,21 +260,11 @@ void draw() {
         }
     popMatrix();
 
-    textAlign(BASELINE);
-    fill(0);
-    font("monospace", 16);
-    text("FPS: ${frameRate().round()}", 3, height - 4);
-
     if (colorPicker != null) {
         colorPicker!.render();
     }
 
     window.render();
-
-    if (!running) {
-        noLoop();
-        window.free();
-    }
 }
 
 void mousePressed(MouseEvent event) {
@@ -270,6 +280,11 @@ void mousePressed(MouseEvent event) {
         sidebarPage.mousePressed();
         return;
     }
+
+    // clicking outside the sidebar finishes editing its number boxes
+    if (brushesPage.initialized) {
+        brushesPage.blurInputs();
+    }
     
     var btnX = (68 + (lWidth - (4*68 + 48 + 8*68))) / 2;
     for (var i = 0; i < sidebarPageLabels.length; i++) {
@@ -281,7 +296,8 @@ void mousePressed(MouseEvent event) {
     }
 
     if (get.mouseX < sidebarX && get.mouseY > canvasAreaY) {
-        currDrawStroke = new BrushStroke(currColor, brushesPage.thicknessSlider.value, selectedMarker);
+        currDrawStroke = new BrushStroke(currColor, brushesPage.thicknessSlider.value, brushesPage.opacitySlider.value, selectedMarker);
+        currDrawStroke!.addPoint(get.mouseX.toDouble(), get.mouseY.toDouble());
     }
 }
 
@@ -300,9 +316,7 @@ void mouseDragged(MouseEvent event) {
     }
 
     if (currDrawStroke != null) {
-        var points = currDrawStroke!.points;
-        points.add(get.mouseX.toDouble());
-        points.add(get.mouseY.toDouble());
+        currDrawStroke!.addPoint(get.mouseX.toDouble(), get.mouseY.toDouble());
     }
 }
 
@@ -336,7 +350,7 @@ void mouseReleased(MouseEvent event) {
         pushMatrix();
             scale(appScale);
             image(paintCanvas, canvasX, canvasY);
-            currDrawStroke!.render();
+            currDrawStroke!.render(dl.ctx);
         popMatrix();
         paintCanvas = snip(canvasX, canvasY, paintCanvas.width, paintCanvas.height);
         currDrawStroke = null;
@@ -347,11 +361,18 @@ void mouseReleased(MouseEvent event) {
 }
 
 void keyPressed(KeyboardEvent event) {
+    if (colorPicker != null) {
+        colorPicker!.keyPressed(event);
+        return;
+    }
     sidebarPage.keyPressed(event);
 }
 
 var running = true;
 void myEventHandler(Event event) {
+    if (event.type != EventType.Unknown) {
+        needsRedraw = true;
+    }
     if (event is MouseEvent) {
         if (event.type == EventType.MouseDown) {
             dl.eventCallbacks.mousedown(event);
@@ -398,6 +419,9 @@ Future<void> main() async {
     );
     window.setCanvas(canvas);
     window.eventHandler = myEventHandler;
+    // SDL starts in text input mode, which lets input methods (e.g. Korean IME)
+    // swallow letter keys before they reach us as key events
+    sdl.SDL_StopTextInput();
     sdl.SDL_SetWindowMinimumSize(window.sdlWindow, (MIN_WIDTH * appScale).round(), (MIN_HEIGHT * appScale).round());
 
     globalizeDL(dl);
@@ -414,7 +438,7 @@ Future<void> main() async {
     loadOPpasteGradient();
     loadMagicSelectGradient();
 
-    frameRate(120);
+    frameRate(60);
     dl.draw = draw;  
     dl.mousePressed = mousePressed;
     dl.mouseDragged = mouseDragged;

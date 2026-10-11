@@ -82,6 +82,8 @@ class SidebarPage {
     void mouseDragged() {}
     void keyPressed(KeyboardEvent event) {}
     void render(int mouseX, int mouseY) {}
+    // true while the page needs to be redrawn every frame (e.g. a text box is being edited)
+    bool get isActive => false;
 }
 
 class PlaceholderPage extends SidebarPage {
@@ -131,7 +133,25 @@ class BrushesPage extends SidebarPage {
             "100", "%"
         );
 
+        thicknessNumberBox.onCommit = (str) => commitNumber(str, thicknessSlider);
+        opacityNumberBox.onCommit = (str) => commitNumber(str, opacitySlider);
+
         initialized = true;
+    }
+
+    void commitNumber(String str, Slider slider) {
+        final num = int.tryParse(str);
+        if (num != null) {
+            slider.value = constrain(num, slider.start, slider.stop).toDouble();
+        }
+        sidebarCacheImg = null;
+    }
+
+    bool get isActive => initialized && (thicknessNumberBox.focused || opacityNumberBox.focused);
+
+    void blurInputs() {
+        thicknessNumberBox.blur();
+        opacityNumberBox.blur();
     }
 
     void mousePressed() {
@@ -167,7 +187,7 @@ class BrushesPage extends SidebarPage {
         }
 
         final addClrBtnX = sidebarX + 24;
-        final addClrBtnY = lHeight - 59;
+        final addClrBtnY = lHeight - 60;
         final addClrBtnWidth = SIDEBAR_WIDTH - 24*2;
 
         // change of color from custom palette
@@ -266,11 +286,15 @@ class BrushesPage extends SidebarPage {
         opacitySlider.render();
 
         thicknessNumberBox.x = sidebarX + 154;
-        thicknessNumberBox.value = thicknessSlider.value.round().toString();
+        if (!thicknessNumberBox.focused) {
+            thicknessNumberBox.value = thicknessSlider.value.round().toString();
+        }
         thicknessNumberBox.render();
 
         opacityNumberBox.x = sidebarX + 154;
-        opacityNumberBox.value = opacitySlider.value.round().toString();
+        if (!opacityNumberBox.focused) {
+            opacityNumberBox.value = opacitySlider.value.round().toString();
+        }
         opacityNumberBox.render();
 
         // divider
