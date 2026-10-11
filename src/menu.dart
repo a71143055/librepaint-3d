@@ -1,7 +1,6 @@
 import 'package:drawlite_dart/dl.dart';
 import 'package:drawlite_dart/drawlite-touch.dart';
 
-import './app-state.dart';
 import './file-actions.dart';
 
 // dropdown opened by the "Menu" button in the top left

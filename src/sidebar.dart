@@ -1,5 +1,5 @@
 import 'package:drawlite_dart/drawlite.dart'
-    show Color, Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent, DLImage;
+    show KeyboardEvent, DLImage;
 import 'package:drawlite_dart/dl.dart';
 import 'package:drawlite_dart/drawlite-touch.dart';
 
