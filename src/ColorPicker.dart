@@ -1,6 +1,6 @@
 import 'package:dcanvas/CanvasRenderingContext.dart';
 import 'package:drawlite_dart/drawlite.dart'
-    show Color, KeyboardEvent;
+    show Color, KeyboardEvent, DLImage;
 import 'package:drawlite_dart/dl.dart';
 import 'package:drawlite_dart/drawlite-touch.dart';
 
@@ -48,6 +48,8 @@ class ColorPicker {
     int colorDestination;
 
     late ImageData pickerImgData;
+    // drawn as an image (rather than putImageData) so it follows the UI scale
+    late DLImage pickerImg;
 
     ColorPicker(this.colorDestination) {
         for (int i = 0; i < 3; i++) {
@@ -75,8 +77,8 @@ class ColorPicker {
             setFromRGB((v >> 16) & 255, (v >> 8) & 255, v & 255);
         };
 
-        this.x = ((get.width / 2) - (width / 2)).toInt();
-        this.y = ((get.height / 2) - (height / 2)).toInt();
+        this.x = ((lWidth / 2) - (width / 2)).toInt();
+        this.y = ((lHeight / 2) - (height / 2)).toInt();
 
         final hsb = currColor.toHSB();
         this.hue = hsb[0];
@@ -85,6 +87,7 @@ class ColorPicker {
         this.exactColor = currColor;
 
         this.pickerImgData = ImageData.withDimensions(pickerBoxSz, pickerBoxSz);
+        this.pickerImg = DLImage(pickerImgData);
         updatePickerImage();
     }
 
@@ -117,6 +120,7 @@ class ColorPicker {
             pickerImgData.data[i+2] = clr[2];
             pickerImgData.data[i+3] = 255;
         }
+        pickerImg.updatePixels();
     }
 
     void keyPressed(KeyboardEvent event) {
@@ -262,7 +266,7 @@ class ColorPicker {
         text("Choose a new color", pickerBoxX, this.y + 35);
 
         // draw saturation & brightness picker box
-        dl.ctx.putImageData(pickerImgData, pickerBoxX + 1, pickerBoxY + 1);
+        image(pickerImg, pickerBoxX + 1, pickerBoxY + 1);
         // outline
         noFill();
         stroke(0, 128);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:drawlite_dart/drawlite.dart'
     show Drawlite, Event, KeyboardEvent, MouseEvent, QuitEvent, KeyState;
@@ -52,7 +53,7 @@ void renderTopRowButtons() {
 
     font("Open Sans", 11);
     noStroke();
-    var touching = point_rect(mouseX / appScale, mouseY / appScale, 0, 0, 68, 48);
+    var touching = point_rect(mouseX, mouseY, 0, 0, 68, 48);
     if (touching) {
         fill(255, 255, 255, 25);
     } else {
@@ -78,7 +79,7 @@ void renderTopRowButtons() {
     var btnX = (68 + (lWidth - (4*68 + 48 + 8*68))) / 2;
     textAlign(CENTER);
     for (var i = 0; i < sidebarPageLabels.length; i++) {
-        final touching2 = point_rect(mouseX / appScale, mouseY / appScale, btnX, 0, 68, 48);
+        final touching2 = point_rect(mouseX, mouseY, btnX, 0, 68, 48);
         if (i == sidebarPage) {
             fill(30, 100, 190);
         } else if (touching2) {
@@ -117,7 +118,7 @@ void renderTopRowButtons() {
         final enabled = (i != UNDO_BUTTON || doc.canUndo) && (i != REDO_BUTTON || doc.canRedo);
         noStroke();
         rectMode(CORNER);
-        var touching2 = point_rect(mouseX / appScale, mouseY / appScale, rx, 0, 68, 48);
+        var touching2 = point_rect(mouseX, mouseY, rx, 0, 68, 48);
         if (touching2 && enabled) {
             fill(255, 255, 255, 25);
         } else {
@@ -135,7 +136,7 @@ void renderTopRowButtons() {
         rectMode(CORNER);
     }
 
-    var touching3 = point_rect(mouseX / appScale, mouseY / appScale, lWidth - 48, 0, 48, 48);
+    var touching3 = point_rect(mouseX, mouseY, lWidth - 48, 0, 48, 48);
     if (touching3) {
         fill(255, 255, 255, 25);
     } else {
@@ -172,11 +173,11 @@ void updateView() {
     viewY = (canvasAreaY + (lHeight - canvasAreaY - doc.height * viewZoom) / 2).roundToDouble();
 }
 
-double toDocX(num screenX) => (screenX / appScale - viewX) / viewZoom;
-double toDocY(num screenY) => (screenY / appScale - viewY) / viewZoom;
+double toDocX(num screenX) => (screenX - viewX) / viewZoom;
+double toDocY(num screenY) => (screenY - viewY) / viewZoom;
 
 bool isOverCanvasArea(num screenX, num screenY) {
-    return screenX / appScale < sidebarX && screenY / appScale > canvasAreaY;
+    return screenX < sidebarX && screenY > canvasAreaY;
 }
 
 var _lastTitle = "";
@@ -277,7 +278,7 @@ void draw() {
             for (var i = 0; i < labels.length; i++) {
                 var txtWidth = textWidth(labels[i]) + 71;
                 
-                var touching3 = point_rect(mouseX / appScale, mouseY / appScale, btnX, 48, txtWidth, 48);
+                var touching3 = point_rect(mouseX, mouseY, btnX, 48, txtWidth, 48);
                 if (touching3) {
                     fill(0, 0, 0, 20);
                 } else {
@@ -302,9 +303,10 @@ void draw() {
             sidebarCacheImg = null;
         } else if (sidebarCacheImg == null) {
             renderSideBar();
-            sidebarCacheImg = snip(sidebarX, sidebarY, SIDEBAR_WIDTH, lHeight - 48);
+            // snip works in physical pixels, unaffected by the scale transform
+            sidebarCacheImg = snip(sidebarX * appScale, sidebarY * appScale, SIDEBAR_WIDTH * appScale, (lHeight - 48) * appScale);
         } else {
-            image(sidebarCacheImg!, sidebarX, sidebarY);
+            image(sidebarCacheImg!, sidebarX, sidebarY, SIDEBAR_WIDTH, lHeight - 48);
         }
 
         renderMenu();
@@ -313,11 +315,11 @@ void draw() {
         if (scene == Scene.Welcome) {
             welcomeMenu();
         }
-    popMatrix();
 
-    if (colorPicker != null) {
-        colorPicker!.render();
-    }
+        if (colorPicker != null) {
+            colorPicker!.render();
+        }
+    popMatrix();
 
     window.render();
 }
@@ -335,7 +337,7 @@ void mousePressed(MouseEvent event) {
         return;
     }
     
-    if (mouseX / appScale > sidebarX && mouseY / appScale > sidebarY) {
+    if (mouseX > sidebarX && mouseY > sidebarY) {
         sidebarPage.mousePressed();
         return;
     }
@@ -347,18 +349,18 @@ void mousePressed(MouseEvent event) {
     
     var btnX = (68 + (lWidth - (4*68 + 48 + 8*68))) / 2;
     for (var i = 0; i < sidebarPageLabels.length; i++) {
-        if (point_rect(mouseX / appScale, mouseY / appScale, btnX, 0, 68, 48)) {
+        if (point_rect(mouseX, mouseY, btnX, 0, 68, 48)) {
             setSidebarPage(i);
             return;
         }
         btnX += 68;
     }
 
-    if (point_rect(mouseX / appScale, mouseY / appScale, topRightButtonX(UNDO_BUTTON), 0, 68, 48)) {
+    if (point_rect(mouseX, mouseY, topRightButtonX(UNDO_BUTTON), 0, 68, 48)) {
         undo();
         return;
     }
-    if (point_rect(mouseX / appScale, mouseY / appScale, topRightButtonX(REDO_BUTTON), 0, 68, 48)) {
+    if (point_rect(mouseX, mouseY, topRightButtonX(REDO_BUTTON), 0, 68, 48)) {
         redo();
         return;
     }
@@ -387,7 +389,7 @@ void mouseDragged(MouseEvent event) {
         return;
     }
 
-    if (mouseX / appScale > sidebarX && mouseY / appScale > sidebarY) {
+    if (mouseX > sidebarX && mouseY > sidebarY) {
         sidebarPage.mouseDragged();
         return;
     }
@@ -409,7 +411,7 @@ void mouseReleased(MouseEvent event) {
         for (var i = 0; i < 3; i++) {
             var rx = lWidth / 2 - 101;
             var ry = 165 + i * 169;
-            var touching = point_rect(mouseX / appScale, mouseY / appScale, rx, ry, 202, 144);
+            var touching = point_rect(mouseX, mouseY, rx, ry, 202, 144);
             if (touching) {
                 scene = Scene.Draw;
                 if (i == 0) {
@@ -491,6 +493,11 @@ void myEventHandler(Event event) {
         needsRedraw = true;
     }
     if (event is MouseEvent) {
+        // everything after this works in logical (unscaled) coordinates
+        if (appScale != 1) {
+            event.mouseX = (event.mouseX / appScale).round();
+            event.mouseY = (event.mouseY / appScale).round();
+        }
         if (event.type == EventType.MouseDown) {
             dl.eventCallbacks.mousedown(event);
         } else if (event.type == EventType.MouseUp) {
@@ -520,11 +527,34 @@ void myEventHandler(Event event) {
     }
 }
 
+// UI scale for high DPI screens, following the desktop's settings.
+// LIBREPAINT_SCALE overrides it, e.g. LIBREPAINT_SCALE=1.5
+double detectAppScale() {
+    final env = Platform.environment;
+    for (final name in ["LIBREPAINT_SCALE", "GDK_SCALE"]) {
+        final value = double.tryParse(env[name] ?? "");
+        if (value != null && value > 0) return value;
+    }
+
+    // X11 desktops (GNOME, KDE, ...) publish their font DPI; 96 is 100%
+    try {
+        final result = Process.runSync("xrdb", ["-query"]);
+        final match = RegExp(r'Xft\.dpi:\s*([0-9.]+)').firstMatch(result.stdout.toString());
+        final dpi = double.tryParse(match?.group(1) ?? "");
+        if (dpi != null && dpi > 0) {
+            // round to the nearest 25% so lines stay crisp
+            return ((dpi / 96) * 4).round() / 4;
+        }
+    } catch (e) {
+        // xrdb isn't installed
+    }
+    return 1.0;
+}
+
 Future<void> main(List<String> args) async {
+    appScale = detectAppScale().clamp(1.0, 4.0);
     width = (1241 * appScale).round();
     height = (804 * appScale).round();
-    // width = (1023 * appScale).round();
-    // height = (768 * appScale).round();
 
     var canvas = Canvas(width, height);
     dl = Drawlite(canvas);

@@ -110,6 +110,9 @@ class BrushesPage extends SidebarPage {
 
     void init() {
         if (!loadedMarkerGraphics) {
+            // the icons are drawn and snipped in unscaled pixels, so undo the UI scale meanwhile
+            dl.ctx.save();
+            dl.ctx.resetTransform();
             loadMarkerGradient();
             loadCaligraphyPen();
             loadOilBrush();
@@ -118,6 +121,7 @@ class BrushesPage extends SidebarPage {
             loadCrayon();
             loadSprayCan();
             loadPaintCan();
+            dl.ctx.restore();
             loadedMarkerGraphics = true;
         }
 
@@ -181,7 +185,7 @@ class BrushesPage extends SidebarPage {
             final x = sidebarX + 24 + (i % 6) * 36;
             final y = lHeight - 177 + floor(i / 6) * 36;
 
-            if (point_rect(mouseX / appScale, mouseY / appScale, x, y, 36, 36)) {
+            if (point_rect(mouseX, mouseY, x, y, 36, 36)) {
                 currColor = brushColors[i];
             }
         }
@@ -314,13 +318,13 @@ class BrushesPage extends SidebarPage {
         rect(colorPreviewX, colorBoxesY, 140, 44);
         fill(245);
         rect(colorPickerX, colorBoxesY, 72, 44);
-        var touchingColor = point_rect(mouseX / appScale, mouseY / appScale, colorPreviewX, colorBoxesY, 140, 44);
+        var touchingColor = point_rect(mouseX, mouseY, colorPreviewX, colorBoxesY, 140, 44);
         if (touchingColor) {
             noFill();
             stroke(60, 100, 200);
             rect(colorPreviewX-1, colorBoxesY-1, 140+2, 44+2);
         }
-        var touchingPicker = point_rect(mouseX / appScale, mouseY / appScale, colorPickerX, colorBoxesY, 72, 44);
+        var touchingPicker = point_rect(mouseX, mouseY, colorPickerX, colorBoxesY, 72, 44);
         if (touchingPicker) {
             fill(255);
             rect(colorPickerX, colorBoxesY, 72, 44);
@@ -334,7 +338,7 @@ class BrushesPage extends SidebarPage {
             fill(brushColors[i]);
             rect(x, y, 36, 36);
 
-            final touchingPaletteSquare = point_rect(mouseX / appScale, mouseY / appScale, x, y, 36, 36);
+            final touchingPaletteSquare = point_rect(mouseX, mouseY, x, y, 36, 36);
             if (touchingPaletteSquare) {
                 noFill();
                 stroke(0, 125);

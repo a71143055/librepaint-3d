@@ -30,8 +30,8 @@ final _items = [
 void renderMenu() {
     if (!menuOpen) return;
 
-    final mx = get.mouseX / appScale;
-    final my = get.mouseY / appScale;
+    final mx = get.mouseX;
+    final my = get.mouseY;
 
     noStroke();
     rectMode(CORNER);
@@ -59,8 +59,8 @@ void renderMenu() {
 
 // returns true if the click was handled by the menu
 bool menuMousePressed() {
-    final mx = get.mouseX / appScale;
-    final my = get.mouseY / appScale;
+    final mx = get.mouseX;
+    final my = get.mouseY;
 
     // the Menu button toggles the dropdown
     if (point_rect(mx, my, 0, 0, 68, 48)) {
